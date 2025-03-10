@@ -3,6 +3,8 @@ import useTodos from "../utils/useTodos";
 import Loading from "./Loading";
 import { SquarePen, Trash2, X ,ArrowRightFromLine, TextCursor, Trash, CirclePlus } from "lucide-react";
 import '../navbar.css'
+import api from "../utils/api";
+
 const Todos = () => {
   const {
     isUserLoggedIn,
@@ -10,6 +12,7 @@ const Todos = () => {
     search,
     setSearch,
     loading,
+    setLoading,
     input,
     setInput,
     deadlineToggle,
@@ -26,67 +29,20 @@ const Todos = () => {
     deleteAllTodos,
     toggleCompletion,
     copyAllTodos,
-    resetForm
+    resetForm, setMsg,
+    toggleMenu, settoggleMenu,
+    todolists, settodolist,
+    toggleCreateNewTodolist, settoggleCreateNewTodolist,
+    todolistTitle, settodolistTitle,
+    renameTodolist,
+    deleteTodolist,
+    createTodolist,
+    toggleTodolistRename,settoggleTodolistRename,
+    currentTodolist, setcurrentTodolist
+
   } = useTodos();
-  const [toggleMenu, settoggleMenu] = useState(true)
-  const [todolists, settodolists] = useState(JSON.parse(localStorage.getItem("todolists"))
-  //   [
-  //   {
-  //     _id:1,
-  //     title:"TodolistOnetwothree",
-  //   },
-  //   {
-  //     _id:2,
-  //     title:"Todolist2",
-  //   },
-  //   {
-  //     _id:3,
-  //     title:"Todolist3",
-  //   },
-  //   {
-  //     _id:4,
-  //     title:"Todolist4",
-  //   },
-  // ]
-)
-  useEffect(()=>{
-    settoggleTodolistRename(todolists.map(()=>false))
-    localStorage.setItem("todolists",JSON.stringify(todolists))
-    console.log(todolists)
-  },[todolists])
-  useEffect(()=>{
-    settodolists(JSON.parse(localStorage.getItem("todolists")))
-  },[])
-  const [toggleCreateNewTodolist, settoggleCreateNewTodolist] = useState(true)
-  const [toggleTodolistRename, settoggleTodolistRename] = useState(todolists.map(()=>false))
-  const [todolistTitle, settodolistTitle] = useState("")
-  const renameTodolist = (e,id) => {
-    e.preventDefault()
-    settodolists(prev=>prev.map((todolist)=>id===todolist._id?{...todolist,title:todolistTitle}:todolist))
-    settoggleTodolistRename(prev => prev.map((t, index) => 
-      todolists[index]._id === id ? false : t
-    ));
-    settodolistTitle("")
-  }
-  const deleteTodolist = (id) =>{
-    settodolists(prev=>prev.filter(item=>item._id!==id))
-  }
-  const createTodolist = (e) =>{
-    e.preventDefault()
-    if(isUserLoggedIn){
-    const newTodolist = {
-      _id:todolists.length+1,
-      title:todolistTitle
-    }
-    settodolists(prev=>[...prev,newTodolist])
-    settodolistTitle("");
-    settoggleCreateNewTodolist(false)
-    // localStorage.setItem("todolists",JSON.stringify([...todolists,newTodolist]))
-    }
-    else{
-      alert("not loggedin")
-    }
-  }
+  
+
   return (
     <>
     <div className={`navMenu ${toggleMenu ? 'navMenuToggleBtnOn' : 'navMenuToggleBtnOff'}`}>
@@ -109,7 +65,7 @@ const Todos = () => {
       }
       <div className="todolists">
         {todolists?.map((item,key)=>(
-          <div className="todolist-item" key={key} >
+          <div className={`todolist-item  ${item._id===currentTodolist?._id?"todolistNow":""}` } key={key} >
             {toggleTodolistRename[key]
             ?(<form onSubmit={e=>renameTodolist(e,item._id)}>
                 <input required type="text" 
@@ -120,7 +76,7 @@ const Todos = () => {
                 <X onClick={()=>settoggleTodolistRename(prev=>prev.map(()=>false))} />
               </form> )
             :(<>
-              <h2>{item.title}</h2> 
+              <h2 onClick={()=>{console.log(1);setcurrentTodolist(todolists.find(tl=>tl._id===item._id))}}>{item.title}</h2> 
               <div className="todolistOptions">
                 <p>:</p>
                 <div className="todolistOptionBtns">
@@ -206,7 +162,7 @@ const Todos = () => {
         {loading ? (
           <Loading />
         ) : filteredTodos?.length ? (
-          filteredTodos.map((todo) => (
+          (filteredTodos.filter(tl=>tl.todolist==currentTodolist?._id)).map((todo) => (
             <div key={todo._id} className="todo-item">
               <div className="todo-header">
                 <label className="check">

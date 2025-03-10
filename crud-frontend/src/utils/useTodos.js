@@ -27,8 +27,8 @@ const useTodos = () => {
 
   useEffect(() => {
     setFilteredTodos(todolist);
+    console.log(todolist)
   }, [todolist]);
-
   // Debounce search filtering
   useEffect(() => {
     if (updateId) setUpdateId(null);
@@ -97,7 +97,20 @@ const useTodos = () => {
           resetForm()
         });
     } else {
+      if(!todolists.length){
+        settodolists([
+          {
+            _id:1,
+            title:"Todolist1"
+          }
+        ])
+        setcurrentTodolist({
+          _id:1,
+          title:"Todolist1"
+        })
+      }
       const newTodo = {
+        todolist:currentTodolist._id,
         _id: Date.now().toString(),
         title: input,
         completed: false,
@@ -111,6 +124,7 @@ const useTodos = () => {
       resetForm()
     }
   };
+
   const formatDateTimeLocal = (isoString) => {
     if (!isoString) return "";
   
@@ -273,7 +287,86 @@ const useTodos = () => {
       .catch((err) => alert("Failed to copy: " + err));
   };
   
+  // manage todolist
+  const [toggleMenu, settoggleMenu] = useState(true)
+  const [todolists, settodolists] = useState(JSON.parse(localStorage.getItem("todolists") )|| [])
+  const [currentTodolist, setcurrentTodolist] = useState(todolists.length?todolists[0] : null)
   
+  useEffect(()=>{
+    settoggleTodolistRename(todolists.map(()=>false))
+    localStorage.setItem("todolists",JSON.stringify(todolists))
+    console.log(todolists)
+  },[todolists])
+  useEffect(()=>{
+    console.log(currentTodolist)
+    setFilteredTodos(todolist.filter(tl=>tl.todolist===currentTodolist._id))
+  },[currentTodolist])
+  useEffect(()=>{
+    settodolists(JSON.parse(localStorage.getItem("todolists"))||[])
+  },[])
+  const [toggleCreateNewTodolist, settoggleCreateNewTodolist] = useState(true)
+  const [toggleTodolistRename, settoggleTodolistRename] = useState(todolists.map(()=>false))
+  const [todolistTitle, settodolistTitle] = useState("")
+  const renameTodolist = (e,id) => {
+    e.preventDefault()
+    settodolists(prev=>prev.map((todolist)=>id===todolist._id?{...todolist,title:todolistTitle}:todolist))
+    settoggleTodolistRename(prev => prev.map((t, index) => 
+      todolists[index]._id === id ? false : t
+    ));
+    settodolistTitle("")
+  }
+  const deleteTodolist = (id) =>{
+    settodolists(prev=>prev.filter(item=>item._id!==id))
+    settodolist(prev=>prev.filter(item=>item.todolist!==id))
+  }
+  useEffect(()=>{
+    console.log(todolist)
+    localStorage.setItem("todos", JSON.stringify(todolist));
+    setcurrentTodolist(todolists[0]||null)
+  },[todolist])
+  const createTodolist = (e) =>{
+    e.preventDefault()
+    setLoading(true)
+    if(isUserLoggedIn){
+    const newTodolist = {
+      _id:todolists.length+1,
+      title:todolistTitle
+    }
+    settodolists(prev=>[...prev,newTodolist])
+    settodolistTitle("");
+    settoggleCreateNewTodolist(false)
+    // localStorage.setItem("todolists",JSON.stringify([...todolists,newTodolist]))
+    }
+    else{
+      api
+        .post("/create-todolist", {title:todolistTitle})
+        .then((res) => {
+          settodolist(prev=>[...prev,res.data.todolist])
+          setMsg(res.data.message);
+          console.log(res.data)
+        })
+        .catch((e) =>setMsg("Failed to add todo"))
+        .finally(() => {
+          resetForm()
+        });
+    }
+    setLoading(false);
+
+  }
+  const getTodolists = () => {
+    setLoading(true);
+    if (isUserLoggedIn()) {
+      api
+        .get("/todolists")
+        .then((res) => settodolist(res.data.todolists))
+        .catch(() => setMsg("Error fetching todolists"))
+        .finally(() =>{ setLoading(false);});
+    } else {
+      const localTodos = JSON.parse(localStorage.getItem("todolists")) || [];
+      settodolists(localTodos);
+      setLoading(false);
+    }
+  };
 
   return {
     isUserLoggedIn,
@@ -282,13 +375,13 @@ const useTodos = () => {
     search,
     setSearch,
     loading,
+    setLoading,
     input,
     setInput,
     deadlineToggle,
     setdeadlineToggle,
     deadline,
     setdeadline,
-    msg,
     updateId,
     setUpdateId,
     addTodo,
@@ -298,7 +391,17 @@ const useTodos = () => {
     deleteAllTodos,
     toggleCompletion,
     copyAllTodos,
-    resetForm
+    resetForm,
+    msg, setMsg,
+    toggleMenu, settoggleMenu,
+    todolists, settodolist,
+    toggleCreateNewTodolist, settoggleCreateNewTodolist,
+    todolistTitle, settodolistTitle,
+    renameTodolist,
+    deleteTodolist,
+    createTodolist,
+    toggleTodolistRename,settoggleTodolistRename,
+    currentTodolist, setcurrentTodolist
   };
 };
 
