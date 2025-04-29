@@ -1,21 +1,10 @@
+// ✅ UPDATED useTodos.js with fixed local + logged-in todolist tracking
 import { useEffect, useState } from "react";
 import api from "./api";
 
 const isUserLoggedIn = () => localStorage.getItem("token") !== null;
 
-const formatDateTimeLocal = (isoString) => {
-  if (!isoString) return "";
-  const date = new Date(isoString);
-  const localISOString = new Date(
-    date.getTime() - date.getTimezoneOffset() * 60000
-  )
-    .toISOString()
-    .slice(0, 16);
-  return localISOString;
-};
-
 const useTodos = () => {
-  // Todos for current todolist
   const [todolist, settodolist] = useState([]);
   const [filteredTodos, setFilteredTodos] = useState([]);
   const [search, setSearch] = useState("");
@@ -26,16 +15,6 @@ const useTodos = () => {
   const [msg, setMsg] = useState("");
   const [updateId, setUpdateId] = useState(null);
 
-  // Todolists management
-  const [todolists, settodolists] = useState(() => {
-    return JSON.parse(localStorage.getItem("todolists")) || [];
-  });
-  const [currentTodolist, setcurrentTodolist] = useState(() => {
-    const lists = JSON.parse(localStorage.getItem("todolists")) || [];
-    return lists.length ? lists[0] : null;
-  });
-
-  // Reset form inputs
   const resetForm = () => {
     setInput("");
     setdeadline(null);
@@ -43,101 +22,123 @@ const useTodos = () => {
     setUpdateId(null);
   };
 
-  // Fetch todos when component mounts
-  useEffect(() => {
-    getTodos();
-  }, []);
+  const [toggleMenu, settoggleMenu] = useState(true);
+  const [todolists, settodolists] = useState(JSON.parse(localStorage.getItem("todolists")) || []);
+  const [currentTodolist, setcurrentTodolist] = useState(todolists.length ? todolists[0] : null);
 
-  // Save filtered todos (and update whenever todolist or currentTodolist changes)
   useEffect(() => {
-    // If a current todolist exists, filter todos by it; otherwise, show all.
-    if (currentTodolist) {
-      setFilteredTodos(todolist.filter((tl) => tl.todolist === currentTodolist._id));
-    } else {
-      setFilteredTodos(todolist);
+    settoggleTodolistRename(todolists.map(() => false));
+    localStorage.setItem("todolists", JSON.stringify(todolists));
+  }, [todolists]);
+
+  useEffect(() => {
+    if (!currentTodolist || !todolists.find(t => t._id === currentTodolist._id)) {
+      setcurrentTodolist(todolists[0] || null);
     }
-    // Also store todos locally
-    localStorage.setItem("todos", JSON.stringify(todolist));
-  }, [todolist, currentTodolist]);
+    
+  }, [todolists]);
 
-  // Debounce search filtering
+
   useEffect(() => {
+    if (!isUserLoggedIn()) {
+      const existing = JSON.parse(localStorage.getItem("todos")) || [];
+  
+      // keep todos not in this list's current state (from other todolists)
+      const otherTodos = existing.filter(todo =>
+        !todolist.some(t => t._id === todo._id)
+      );
+  
+      const merged = [...otherTodos, ...todolist];
+      localStorage.setItem("todos", JSON.stringify(merged));
+    }
+  }, [todolist]);
+  
+
+  useEffect(() => {
+    if (!currentTodolist || !Array.isArray(todolist)) return;
+  
+    setFilteredTodos(
+      todolist.filter((todo) => todo.todolistId === currentTodolist._id)
+    );
+  }, [todolist, currentTodolist]);
+  
+  
+
+
+  useEffect(() => {
+    if (updateId) setUpdateId(null);
     if (search) setInput("");
     const delay = setTimeout(() => {
-      if (search.trim() !== "") {
-        setFilteredTodos(
-          todolist.filter((todo) =>
-            todo.title.toLowerCase().includes(search.toLowerCase())
-          )
+      if (search.trim()) {
+        setFilteredTodos(prev =>
+          prev.filter(todo => todo.title.toLowerCase().includes(search.toLowerCase()))
         );
-      } else if (currentTodolist) {
-        setFilteredTodos(todolist.filter((tl) => tl.todolist === currentTodolist._id));
       } else {
-        setFilteredTodos(todolist);
+        setFilteredTodos(todolist.filter(t => t.todolist === currentTodolist?._id));
       }
     }, 500);
     return () => clearTimeout(delay);
-  }, [search, todolist, currentTodolist]);
+  }, [search]);
 
-  // Clear message after 5 seconds
   useEffect(() => {
     if (!msg) return;
     const timeout = setTimeout(() => setMsg(""), 5000);
     return () => clearTimeout(timeout);
   }, [msg]);
 
-  // Get todos either from API (if logged in) or from localStorage (if guest)
-  const getTodos = () => {
-    setLoading(true);
-    if (isUserLoggedIn()) {
-      api
-        .get("/todos")
-        .then((res) => settodolist(res.data.todos))
-        .catch(() => setMsg("Error fetching Todos"))
-        .finally(() => setLoading(false));
-    } else {
-      const localTodos = JSON.parse(localStorage.getItem("todos")) || [];
-      settodolist(localTodos);
-      setLoading(false);
-    }
-  };
+  
+  // useEffect(() => {
+  //   getTodos();
+  // }, []);
+  // const getTodos = () => {
+  //   setLoading(true);
+  //   if (isUserLoggedIn()) {
+  //     api
+  //       .get("/todos/")
+  //       .then((res) => settodolist(res.data.todos))
+  //       .catch(() => setMsg("Error fetching Todos"))
+  //       .finally(() => setLoading(false));
+  //   } else {
+  //     const localTodos = JSON.parse(localStorage.getItem("todos")) || [];
+  //     settodolist(localTodos);
+  //     setLoading(false);
+  //   }
+  // };
 
-  // Helper to save todos to localStorage (for guest users)
   const saveLocalTodos = (todos) => {
     localStorage.setItem("todos", JSON.stringify(todos));
     settodolist(todos);
   };
 
-  // Add a new todo
   const addTodo = (e) => {
     e.preventDefault();
     setLoading(true);
+
+    if (!currentTodolist) {
+      const defaultList = { _id: Date.now(), title: "Todolist1" };
+      settodolists([defaultList]);
+      setcurrentTodolist(defaultList);
+    }
+
+    const targetTodolist = currentTodolist || { _id: Date.now(), title: "Todolist1" };
+
     if (isUserLoggedIn()) {
-      const newTodo = {
-        title: input,
-        deadline,
-      };
       api
-        .post("/create-todo", newTodo)
+        .post("/todos/create", { title: input, deadline, todolistId: targetTodolist._id })
         .then((res) => {
           setMsg(res.data.message);
-          getTodos();
+          fetchTodos(currentTodolist._id)
         })
-        .catch(() => setMsg("Failed to add todo"))
+        .catch((e) =>{ 
+          console.error(e)
+          setMsg("Failed to add todo")})
         .finally(() => {
           setLoading(false);
           resetForm();
         });
     } else {
-      // If no todolists exist or no currentTodolist is selected, create a default one.
-      if (!todolists.length || !currentTodolist) {
-        const defaultList = { _id: "1", title: "Todolist1" };
-        settodolists([defaultList]);
-        setcurrentTodolist(defaultList);
-        localStorage.setItem("todolists", JSON.stringify([defaultList]));
-      }
       const newTodo = {
-        todolist: currentTodolist._id,
+        todolist: targetTodolist._id,
         _id: Date.now().toString(),
         title: input,
         completed: false,
@@ -152,7 +153,12 @@ const useTodos = () => {
     }
   };
 
-  // Set todo for editing
+  const formatDateTimeLocal = (isoString) => {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
   const editTodo = (id) => {
     setUpdateId(id);
     const todoNow = todolist.find((item) => item._id === id);
@@ -168,48 +174,43 @@ const useTodos = () => {
     }
   };
 
-  // Handle update (edit) submission
   const handleEdit = (e) => {
     e.preventDefault();
     setLoading(true);
+
     if (isUserLoggedIn()) {
-      const newTodo = {
-        title: input,
-        deadline,
-      };
       api
-        .patch(`/update-todo/${updateId}`, newTodo)
+        .patch(`/todos/update/${updateId}`, { title: input, deadline })
         .then((res) => {
           setMsg(res.data.message);
-          settodolist((items) =>
-            items.map((item) =>
-              item._id === updateId ? { ...item, title: input, deadline } : item
-            )
+          const updatedTodos = todolist.map((todo) =>
+            todo._id === updateId ? { ...todo, title: input, deadline } : todo
           );
+          saveLocalTodos(updatedTodos);
         })
         .catch(() => setMsg("Failed to update todo"))
         .finally(() => {
           setLoading(false);
           resetForm();
+          setUpdateId(null);
+
         });
     } else {
       const updatedTodos = todolist.map((todo) =>
         todo._id === updateId ? { ...todo, title: input, deadline } : todo
       );
-      localStorage.setItem("todos", JSON.stringify(updatedTodos));
-      settodolist(updatedTodos);
+      saveLocalTodos(updatedTodos);
       setMsg("Todo updated locally");
       setLoading(false);
       resetForm();
     }
   };
 
-  // Delete a specific todo
   const deleteTodo = (id) => {
     setLoading(true);
     if (isUserLoggedIn()) {
       api
-        .delete(`/delete-todo/${id}`)
+        .delete(`/todos/delete/${id}`)
         .then((res) => {
           setMsg(res.data.message);
           settodolist((items) => items.filter((item) => item._id !== id));
@@ -224,11 +225,10 @@ const useTodos = () => {
     }
   };
 
-  // Delete all todos
   const deleteAllTodos = () => {
     if (isUserLoggedIn()) {
       api
-        .delete("/delete-todos")
+        .delete("/todos/delete-all")
         .then((res) => {
           setMsg(res.data.message);
           settodolist([]);
@@ -240,12 +240,11 @@ const useTodos = () => {
     }
   };
 
-  // Toggle completion of a todo
   const toggleCompletion = (id, isCompleted) => {
     setMsg("Updating Todo Progress...");
     if (isUserLoggedIn()) {
       api
-        .patch(`/update-todo-completion/${id}`, { isCompleted })
+        .patch(`/todos/toggle/${id}`, { isCompleted })
         .then((res) => {
           setMsg(res.data.message);
           settodolist((prev) =>
@@ -264,172 +263,174 @@ const useTodos = () => {
     }
   };
 
-  // Copy all todos (formatted)
   const copyAllTodos = () => {
     if (!filteredTodos.length) {
       alert("No todos to copy!");
       return;
     }
-    const indexWidth = 5;
-    const statusWidth = 10;
-    const titleWidth = 30;
-    const header =
-      "No.  | Status     | Title\n" +
-      "-".repeat(indexWidth + statusWidth + titleWidth);
+
+    const indexWidth = 5, statusWidth = 10, titleWidth = 30;
+    const header = "No.  | Status     | Title\n" + "-".repeat(indexWidth + statusWidth + titleWidth);
     const toCopy = filteredTodos
       .map((todo, index) =>
         `${(index + 1).toString().padEnd(indexWidth)}| ` +
         `${(todo.completed ? "✅ Done" : "⏳ Pending").padEnd(statusWidth)}| ` +
         `${todo.title.padEnd(titleWidth)}`
-      )
-      .join("\n");
-    const formattedText = `${header}\n${toCopy}`;
-    navigator.clipboard
-      .writeText(formattedText)
+      ).join("\n");
+
+    navigator.clipboard.writeText(`${header}\n${toCopy}`)
       .then(() => setMsg("Todos copied to clipboard!"))
-      .catch((err) => alert("Failed to copy: " + err));
+      .catch(err => alert("Failed to copy: " + err));
   };
 
-  // Todolists management
-
-  // Update rename toggles and store todolists locally whenever todolists change
-  useEffect(() => {
-    settoggleTodolistRename(todolists.map(() => false));
-    localStorage.setItem("todolists", JSON.stringify(todolists));
-    console.log("Todolists:", todolists);
-  }, [todolists]);
-
-  // When currentTodolist changes, filter todos accordingly
-  useEffect(() => {
-    if (currentTodolist) {
-      setFilteredTodos(todolist.filter((tl) => tl.todolist === currentTodolist._id));
-    }
-  }, [currentTodolist, todolist]);
-
-  // On mount, load todolists from localStorage
-  useEffect(() => {
-    const storedLists = JSON.parse(localStorage.getItem("todolists")) || [];
-    settodolists(storedLists);
-  }, []);
-
-  // Todolist rename and creation management
-  const [toggleMenu, settoggleMenu] = useState(true);
   const [toggleCreateNewTodolist, settoggleCreateNewTodolist] = useState(true);
-  const [toggleTodolistRename, settoggleTodolistRename] = useState(
-    todolists.map(() => false)
-  );
+  const [toggleTodolistRename, settoggleTodolistRename] = useState(todolists.map(() => false));
   const [todolistTitle, settodolistTitle] = useState("");
 
-  const renameTodolist = (e, id) => {
-    e.preventDefault();
-    settodolists((prev) =>
-      prev.map((tl) =>
-        id === tl._id ? { ...tl, title: todolistTitle } : tl
-      )
-    );
-    settoggleTodolistRename((prev) =>
-      prev.map((t, index) =>
-        todolists[index]._id === id ? false : t
-      )
-    );
-    settodolistTitle("");
-  };
-
-  const deleteTodolist = (id) => {
-    settodolists((prev) => prev.filter((item) => item._id !== id));
-    // Also remove todos that belong to the deleted todolist
-    settodolist((prev) => prev.filter((todo) => todo.todolist !== id));
-  };
-
-  useEffect(() => {
-    console.log("Todos:", todolist);
-    localStorage.setItem("todos", JSON.stringify(todolist));
-    setcurrentTodolist(todolists[0] || null);
-  }, [todolist, todolists]);
-
-  const createTodolist = (e) => {
-    e.preventDefault();
+  const fetchTodolists = async () => {
     setLoading(true);
-    if (!isUserLoggedIn()) {
-      const newTodolist = {
-        _id: (todolists.length + 1).toString(),
-        title: todolistTitle,
-      };
-      settodolists((prev) => [...prev, newTodolist]);
-      settodolistTitle("");
-      settoggleCreateNewTodolist(false);
-    } else {
-      api
-        .post("/create-todolist", { title: todolistTitle })
-        .then((res) => {
-          settodolist((prev) => [...prev, res.data.todolist]);
-          setMsg(res.data.message);
-          console.log("Created todolist:", res.data);
-        })
-        .catch(() => setMsg("Failed to add todolist"))
-        .finally(() => {
-          resetForm();
-        });
-    }
-    setLoading(false);
-  };
-
-  const getTodolists = () => {
-    setLoading(true);
-    if (isUserLoggedIn()) {
-      api
-        .get("/todolists")
-        .then((res) => settodolists(res.data.todolists))
-        .catch(() => setMsg("Error fetching todolists"))
-        .finally(() => setLoading(false));
-    } else {
-      const localLists = JSON.parse(localStorage.getItem("todolists")) || [];
-      settodolists(localLists);
+    try {
+      if (isUserLoggedIn()) {
+        const res = await api.get("/todolists");
+        const list = res.data.todolists || [];
+        settodolists(list);
+        setcurrentTodolist(list[0] || null);
+        settoggleTodolistRename(list.map(() => false));
+  
+        if (list.length > 0) {
+          await fetchTodos(list[0]._id);  // ✅ Fetch todos right here
+        }
+      } else {
+        const local = JSON.parse(localStorage.getItem("todolists")) || [];
+        settodolists(local);
+        setcurrentTodolist(local[0] || null);
+        settoggleTodolistRename(local.map(() => false));
+  
+        if (local.length > 0) {
+          await fetchTodos(local[0]._id);  // ✅ Same here
+        }
+      }
+    } catch (e) {
+      setMsg("Error fetching todolists");
+    } finally {
       setLoading(false);
     }
   };
+
+  const fetchTodos = async (todolistId) => {
+    setLoading(true);
+    try {
+      if (isUserLoggedIn()) {
+        const res = await api.get("/todos", { params: { todolistId } });
+        settodolist(res.data.todos); // ✅ fine, as backend filters
+        console.log(res.data.todos)
+        setMsg("Todos Fetched")
+      } else {
+        const allLocalTodos = JSON.parse(localStorage.getItem("todos")) || [];
+        settodolist(allLocalTodos); // ✅ keep all todos, we will filter in display
+      }
+
+    } catch (e) {
+      setMsg("Error fetching todos");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // On mount, load todolists
+  useEffect(() => {
+    fetchTodolists();
+  }, []);
+
+  // When current todolist changes
+  useEffect(() => {
+    if (currentTodolist?._id) {
+      fetchTodos(currentTodolist._id);
+    }
+  }, [currentTodolist]);
+
+  // Rename Todolist
+  const renameTodolist = async (e, id) => {
+    e.preventDefault();
+    if (isUserLoggedIn()) {
+      try {
+        const res = await api.patch(`/todolists/update/${id}`, { title: todolistTitle });
+        settodolists(prev => prev.map(t => t._id === id ? res.data.todolist : t));
+      } catch (e) {
+        setMsg("Rename failed");
+      }
+    } else {
+      settodolists(prev => prev.map(t => t._id === id ? { ...t, title: todolistTitle } : t));
+    }
+    settoggleTodolistRename(prev => prev.map((_, i) => false));
+    settodolistTitle("");
+  };
+
+  // Delete Todolist
+  const deleteTodolist = async (id) => {
+    if (isUserLoggedIn()) {
+      try {
+        await api.delete(`/todolists/${id}`);
+        settodolists(prev => prev.filter(t => t._id !== id));
+      } catch {
+        setMsg("Failed to delete todolist");
+      }
+    } else {
+      settodolists(prev => prev.filter(t => t._id !== id));
+      settodolist(prev => prev.filter(todo => todo.todolist !== id));
+    }
+  };
+
+  // Create Todolist
+  const createTodolist = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (isUserLoggedIn()) {
+        const res = await api.post("/todolists/create", { title: todolistTitle });
+        settodolists(prev => [res.data.todolist, ...prev]);
+        setcurrentTodolist(res.data.todolist);
+        setMsg(res.data.message);
+      } else {
+        const newList = { _id: Date.now(), title: todolistTitle };
+        settodolists(prev => [newList, ...prev]);
+        setcurrentTodolist(newList);
+        localStorage.setItem("todolists", JSON.stringify([newList, ...todolists]));
+        setMsg("Created Todolist");
+
+      }
+    } catch {
+      setMsg("Failed to create todolist");
+    } finally {
+      settodolistTitle("");
+      settoggleCreateNewTodolist(false);
+      setLoading(false);
+    }
+  };
+
 
   return {
     isUserLoggedIn,
     todolist,
     filteredTodos,
-    search,
-    setSearch,
-    loading,
-    setLoading,
-    input,
-    setInput,
-    deadlineToggle,
-    setdeadlineToggle,
-    deadline,
-    setdeadline,
-    updateId,
-    setUpdateId,
-    addTodo,
-    handleEdit,
-    editTodo,
-    deleteTodo,
-    deleteAllTodos,
-    toggleCompletion,
+    search, setSearch,
+    loading, setLoading,
+    input, setInput,
+    deadlineToggle, setdeadlineToggle,
+    deadline, setdeadline,
+    updateId, setUpdateId,
+    addTodo, handleEdit, editTodo,
+    deleteTodo, deleteAllTodos, toggleCompletion,
     copyAllTodos,
     resetForm,
-    msg,
-    setMsg,
-    toggleMenu,
-    settoggleMenu,
-    todolists,
-    settodolist,
-    toggleCreateNewTodolist,
-    settoggleCreateNewTodolist,
-    todolistTitle,
-    settodolistTitle,
-    renameTodolist,
-    deleteTodolist,
-    createTodolist,
-    toggleTodolistRename,
-    settoggleTodolistRename,
-    currentTodolist,
-    setcurrentTodolist,
+    msg, setMsg,
+    toggleMenu, settoggleMenu,
+    todolists, settodolists,
+    toggleCreateNewTodolist, settoggleCreateNewTodolist,
+    todolistTitle, settodolistTitle,
+    renameTodolist, deleteTodolist, createTodolist,
+    toggleTodolistRename, settoggleTodolistRename,
+    currentTodolist, setcurrentTodolist
   };
 };
 

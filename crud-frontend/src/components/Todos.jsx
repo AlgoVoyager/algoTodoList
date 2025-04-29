@@ -1,7 +1,7 @@
 import React,{useEffect, useState} from "react";
 import useTodos from "../utils/useTodos";
 import Loading from "./Loading";
-import { SquarePen, Trash2, X ,ArrowRightFromLine, TextCursor, Trash, CirclePlus } from "lucide-react";
+import { SquarePen, Trash2, X ,ArrowRightFromLine, TextCursor, Trash, CirclePlus, Check } from "lucide-react";
 import '../navbar.css'
 import api from "../utils/api";
 
@@ -60,6 +60,7 @@ const Todos = () => {
        onChange={(e)=>settodolistTitle(e.target.value)} 
        className="todolistTitleInput" 
        name="todolistTitleInput" /> 
+       <Check onClick={createTodolist} className="curser-pointer" />
        <X onClick={()=>settoggleCreateNewTodolist(false)} />
      </form> 
       }
@@ -71,12 +72,13 @@ const Todos = () => {
                 <input required type="text" 
                 value={todolistTitle} 
                 onChange={(e)=>settodolistTitle(e.target.value)} 
-                className="todolistTitleInput" 
+                className="todolistTitleInput text-black" 
                 name="todolistTitleInput" /> 
+                <Check onClick={(e)=>renameTodolist(e,item._id)} className="curser-pointer" />
                 <X onClick={()=>settoggleTodolistRename(prev=>prev.map(()=>false))} />
               </form> )
             :(<>
-              <h2 onClick={()=>{console.log(1);setcurrentTodolist(todolists.find(tl=>tl._id===item._id))}}>{item.title}</h2> 
+              <h2 onClick={()=>{setcurrentTodolist(todolists.find(tl=>tl._id===item._id))}}>{item.title}</h2> 
               <div className="todolistOptions">
                 <p>:</p>
                 <div className="todolistOptionBtns">
@@ -162,7 +164,7 @@ const Todos = () => {
         {loading ? (
           <Loading />
         ) : filteredTodos?.length ? (
-          (filteredTodos.filter(tl=>tl.todolist==currentTodolist?._id)).map((todo) => (
+          (filteredTodos.filter(tl=>tl.todolistId==currentTodolist?._id)).map((todo) => (
             <div key={todo._id} className="todo-item">
               <div className="todo-header">
                 <label className="check">

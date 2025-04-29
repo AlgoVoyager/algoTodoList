@@ -140,9 +140,10 @@
     width: 90%;
   }
   .todolistTitleInput{
-    background-color: transparent;
+    background-color: rgb(75, 75, 75);
     color: white;
     font-weight: bold;
+    font-size: large;
     box-shadow: none;
     outline: 1px solid lightblue;
   }
